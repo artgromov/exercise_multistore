@@ -2,34 +2,78 @@ from exceptions import *
 
 
 class Attribute:
-    def __init__(self, name, deps, functors, validators, default):
-        self.name = '_' + name
-        self.deps = ['_' + i for i in deps]
+    def __init__(self, name, functors, validators):
+        self.name = name
+        self.local_name = '_' + name
         self.functors = functors
         self.validators = validators
-        self.default = default
 
     def __set__(self, instance, value):
         pass
 
     def __get__(self, instance, owner):
-        if hasattr(instance, self.name):
-            return getattr(instance, self.name)
+        if hasattr(instance, self.local_name):
+            return getattr(instance, self.local_name)
         else:
-            if self.default is None:
-                raise AttributeError
-            else:
-                return self.default
+            raise AttributeNotSet(self.name)
 
 
 class MultiStore:
     def __init__(self):
+        self.tree = {}
+
+    def describe(self, name, deps=list(), functors=list(), validators=list()):
+        descriptor = Attribute(name, functors, validators)
+        setattr(self.__class__, name, descriptor)
+        for parent in deps:
+            if parent in self.tree:
+                self.tree[parent].add(name)
+            else:
+                self.tree[parent] = set(name)
+
+    def remove(self):
         pass
 
-    @classmethod
-    def describe(cls, name, deps=list(), functors=list(), validators=list(), default=None):
-        descriptor = Attribute(name, deps, functors, validators, default)
-        setattr(cls, name, descriptor)
+    def get_subtree(self, *names):
+        tree = self.tree
+        subtree = {}
+
+        def tree_walk(namelist):
+            for parent in namelist:
+                if parent in tree:
+                    childs = set(tree[parent])
+                    if parent not in subtree:
+                        subtree[parent] = childs
+                    tree_walk(childs)
+
+        tree_walk(names)
+        return subtree
+
+    def get_recalc_order(self, *names):
+        subtree = self.get_subtree(*names)
+        recalc_order = []
+
+        def tree_cut(tree):
+            deps = set()
+            for value in tree.values():
+                deps.update(value)
+            new_tree = dict(tree)
+            for parent in tree:
+                if parent not in deps:
+                    recalc_order.append(parent)
+                    childs = new_tree.pop(parent)
+
+                    new_deps = set()
+                    for value in new_tree.values():
+                        new_deps.update(value)
+                    for child in childs:
+                        if child not in tree and child not in new_deps:
+                            recalc_order.append(child)
+            if new_tree:
+                tree_cut(new_tree)
+
+        tree_cut(subtree)
+        return recalc_order
 
     def set(self, **kwargs):
         pass
@@ -37,8 +81,9 @@ class MultiStore:
     def get(self, value):
         return getattr(self, value)
 
-    def get_deptree(self, name):
-        pass
+
+def dget(name):
+    return MultiStore.__dict__[name]
 
 
 if __name__ == '__main__':
@@ -74,10 +119,14 @@ if __name__ == '__main__':
         return value * 4
 
     model = MultiStore()
-    model.describe('a',
-                   deps=['b', 'c'],
-                   functors=[quad_damage],
-                   validators=[is_number, is_between(1, 5)],
-                   default=3)
+    model.describe('1')
+    model.describe('a', deps=['1'])
+    model.describe('b', deps=['1'])
+    model.describe('c', deps=['a', 'b'])
+    model.describe('d', deps=['c', 'a'])
+    model.describe('e', deps=['c', 'b', 'd'])
+    model.describe('f', deps=['b'])
+    model.describe('g', deps=['1'])
 
-
+    print(model.get_subtree('g', 'f', 'c'))
+    print(model.get_recalc_order('g', 'f', 'c'))

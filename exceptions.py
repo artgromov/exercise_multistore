@@ -1,8 +1,7 @@
-class MyException(Exception):
-    def __init__(self, msg):
-        self.msg = msg
+class AttributeNotSet(Exception):
+    pass
 
 
-class InvalidValue(MyException):
+class InvalidValue(Exception):
     pass
 
