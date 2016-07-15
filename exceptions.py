@@ -5,3 +5,6 @@ class AttributeNotSet(Exception):
 class InvalidValue(Exception):
     pass
 
+
+class LoopDependency(Exception):
+    pass

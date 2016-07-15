@@ -25,7 +25,13 @@ class MultiStore:
     def describe(self, name, deps=list(), functors=list(), validators=list()):
         descriptor = Attribute(name, functors, validators)
         setattr(self.__class__, name, descriptor)
+        if name not in self.tree:
+            self.tree[name] = set()
+
         for parent in deps:
+            if parent == name:
+                raise LoopDependency
+
             if parent in self.tree:
                 self.tree[parent].add(name)
             else:
@@ -41,7 +47,7 @@ class MultiStore:
         def tree_walk(namelist):
             for parent in namelist:
                 if parent in tree:
-                    childs = set(tree[parent])
+                    childs = set(tree[parent])  # copy to new set
                     if parent not in subtree:
                         subtree[parent] = childs
                     tree_walk(childs)
@@ -58,17 +64,11 @@ class MultiStore:
             for value in tree.values():
                 deps.update(value)
             new_tree = dict(tree)
-            for parent in tree:
+            for parent in sorted(tree.keys()):
                 if parent not in deps:
                     recalc_order.append(parent)
-                    childs = new_tree.pop(parent)
+                    new_tree.pop(parent)
 
-                    new_deps = set()
-                    for value in new_tree.values():
-                        new_deps.update(value)
-                    for child in childs:
-                        if child not in tree and child not in new_deps:
-                            recalc_order.append(child)
             if new_tree:
                 tree_cut(new_tree)
 
@@ -80,6 +80,12 @@ class MultiStore:
 
     def get(self, value):
         return getattr(self, value)
+
+
+def print_tree(tree, comment=''):
+    print(comment.ljust(50, '-'))
+    for key in sorted(tree.keys()):
+        print(key, sorted(model.tree[key]))
 
 
 def dget(name):
@@ -122,11 +128,12 @@ if __name__ == '__main__':
     model.describe('1')
     model.describe('a', deps=['1'])
     model.describe('b', deps=['1'])
-    model.describe('c', deps=['a', 'b'])
+    model.describe('c', deps=['1'])
     model.describe('d', deps=['c', 'a'])
     model.describe('e', deps=['c', 'b', 'd'])
     model.describe('f', deps=['b'])
-    model.describe('g', deps=['1'])
+    model.describe('g', deps=['a', 'b'])
 
-    print(model.get_subtree('g', 'f', 'c'))
-    print(model.get_recalc_order('g', 'f', 'c'))
+    print_tree(model.tree, 'start tree')
+    print('recalc order'.ljust(50, '-'))
+    print(model.get_recalc_order('a', 'b'))
