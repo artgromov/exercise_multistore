@@ -8,7 +8,7 @@ logging.basicConfig(level=logging.DEBUG,
 
 
 class NotSet:
-    """Placeholder for non-set attributes"""
+    """Placeholder for not set attributes"""
     pass
 
 
@@ -22,8 +22,13 @@ class MultiStore:
         self.tree = {}
         self.formatters = {}
 
-    def describe(self, name, formatters=(dont_change,)):
+    def describe(self, name, *formatters):
+        if hasattr(self, name):
+            self.remove(name)
+            
         setattr(self, name, NotSet)
+        if len(formatters) == 0:
+            formatters = (dont_change,)
         self.formatters[name] = formatters
 
         deps = set()
@@ -44,6 +49,17 @@ class MultiStore:
             else:
                 self.tree[parent] = set(name)
 
+    def remove(self, name):
+        if hasattr(self, name):
+            delattr(self, name)
+            self.formatters.pop(name)
+            self.tree.pop(name)
+            for childs in self.tree.values():
+                childs.remove(name)
+                                
+        else:
+            raise AttributeNotDescribed
+    
     def get_subtree(self, *names):
         tree = self.tree
         subtree = {}
@@ -83,24 +99,21 @@ class MultiStore:
         recalc_order = self.get_recalc_order(*list(kwargs.keys()))
         for number, name in enumerate(recalc_order):
             if name in kwargs:
-                # use new value for start
+                # use new value as start value
                 new_value = kwargs[name]
             else:
-                # get current value for start
+                # use current value as start value
                 new_value = getattr(self, name)
                 if new_value is NotSet:
-                    # check for childs that need to be calculated based on current attribute
-                    childs = self.tree[name]
-                    for child in childs:
-                        if child in recalc_order[number:]:
-                            raise ParentNotSet
+                    # make no change, check as parent later if needed
+                    continue
 
             for function in self.formatters[name]:
                 arg_names = function.__code__.co_varnames[1:function.__code__.co_argcount]  # skip 1st argument
                 arg_dict = {}
                 for arg in arg_names:
                     arg_value = getattr(self, arg)
-                    if arg_value is NotSet:
+                    if arg_value is NotSet:                    
                         raise ParentNotSet
                     else:
                         arg_dict[arg] = arg_value
@@ -110,4 +123,9 @@ class MultiStore:
             setattr(self, name, new_value)
 
     def get(self, name):
-        return getattr(self, name)
+        if hasattr(self, name):
+            value = getattr(self, name)
+            if value is NotSet:
+                raise AttributeNotSet
+        else:
+            raise AttributeNotDescribed

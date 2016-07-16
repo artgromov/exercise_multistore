@@ -3,7 +3,7 @@ from exceptions import *
 
 def is_number(value):
     if isinstance(value, int):
-        return True
+        return value
     else:
         raise InvalidValue('is not number')
 
@@ -21,11 +21,11 @@ class is_between:
             elif self.max <= value:
                 raise InvalidValue('ge than max')
             else:
-                return True
+                return value
         else:
             if value < self.min:
                 raise InvalidValue('lt than min')
             elif self.max < value:
                 raise InvalidValue('gt than max')
             else:
-                return True
+                return value
