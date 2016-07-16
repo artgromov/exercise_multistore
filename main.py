@@ -1,30 +1,37 @@
+import logging
+import sys
 from exceptions import *
 
+logging.basicConfig(level=logging.DEBUG,
+                    format='%(levelname)s: %(message)s',
+                    stream=sys.stdout)
 
-class Attribute:
-    def __init__(self, name, functors, validators):
-        self.name = name
-        self.local_name = '_' + name
-        self.functors = functors
-        self.validators = validators
 
-    def __set__(self, instance, value):
-        pass
+class NotSet:
+    """Placeholder for non-set attributes"""
+    pass
 
-    def __get__(self, instance, owner):
-        if hasattr(instance, self.local_name):
-            return getattr(instance, self.local_name)
-        else:
-            raise AttributeNotSet(self.name)
+
+def dont_change(value):
+    """Formatter that doesnt change attribute and have no dependencies"""
+    return value
 
 
 class MultiStore:
     def __init__(self):
         self.tree = {}
+        self.formatters = {}
 
-    def describe(self, name, deps=list(), functors=list(), validators=list()):
-        descriptor = Attribute(name, functors, validators)
-        setattr(self.__class__, name, descriptor)
+    def describe(self, name, formatters=(dont_change,)):
+        setattr(self, name, NotSet)
+        self.formatters[name] = formatters
+
+        deps = set()
+        for function in formatters:
+            arg_names = function.__code__.co_varnames[1:function.__code__.co_argcount]  # 1 arg is for new value
+            for arg in arg_names:
+                deps.add(arg)
+
         if name not in self.tree:
             self.tree[name] = set()
 
@@ -36,9 +43,6 @@ class MultiStore:
                 self.tree[parent].add(name)
             else:
                 self.tree[parent] = set(name)
-
-    def remove(self):
-        pass
 
     def get_subtree(self, *names):
         tree = self.tree
@@ -76,64 +80,34 @@ class MultiStore:
         return recalc_order
 
     def set(self, **kwargs):
-        pass
-
-    def get(self, value):
-        return getattr(self, value)
-
-
-def print_tree(tree, comment=''):
-    print(comment.ljust(50, '-'))
-    for key in sorted(tree.keys()):
-        print(key, sorted(model.tree[key]))
-
-
-def dget(name):
-    return MultiStore.__dict__[name]
-
-
-if __name__ == '__main__':
-    def is_number(value):
-        if isinstance(value, int):
-            return True
-        else:
-            raise InvalidValue('is not number')
-
-    class is_between:
-        def __init__(self, minimum, maximum, strict=True):
-            self.min = minimum
-            self.max = maximum
-            self.strict = strict
-
-        def __call__(self, value):
-            if self.strict:
-                if value <= self.min:
-                    raise InvalidValue('le than min')
-                elif self.max <= value:
-                    raise InvalidValue('ge than max')
-                else:
-                    return True
+        recalc_order = self.get_recalc_order(*list(kwargs.keys()))
+        for number, name in enumerate(recalc_order):
+            if name in kwargs:
+                # use new value for start
+                new_value = kwargs[name]
             else:
-                if value < self.min:
-                    raise InvalidValue('lt than min')
-                elif self.max < value:
-                    raise InvalidValue('gt than max')
-                else:
-                    return True
+                # get current value for start
+                new_value = getattr(self, name)
+                if new_value is NotSet:
+                    # check for childs that need to be calculated based on current attribute
+                    childs = self.tree[name]
+                    for child in childs:
+                        if child in recalc_order[number:]:
+                            raise ParentNotSet
 
-    def quad_damage(value):
-        return value * 4
+            for function in self.formatters[name]:
+                arg_names = function.__code__.co_varnames[1:function.__code__.co_argcount]  # skip 1st argument
+                arg_dict = {}
+                for arg in arg_names:
+                    arg_value = getattr(self, arg)
+                    if arg_value is NotSet:
+                        raise ParentNotSet
+                    else:
+                        arg_dict[arg] = arg_value
 
-    model = MultiStore()
-    model.describe('1')
-    model.describe('a', deps=['1'])
-    model.describe('b', deps=['1'])
-    model.describe('c', deps=['1'])
-    model.describe('d', deps=['c', 'a'])
-    model.describe('e', deps=['c', 'b', 'd'])
-    model.describe('f', deps=['b'])
-    model.describe('g', deps=['a', 'b'])
+                new_value = function(new_value, **arg_dict)
 
-    print_tree(model.tree, 'start tree')
-    print('recalc order'.ljust(50, '-'))
-    print(model.get_recalc_order('a', 'b'))
+            setattr(self, name, new_value)
+
+    def get(self, name):
+        return getattr(self, name)
