@@ -2,11 +2,12 @@
 This is my short exercise with python descriptors.
 
 # Goals
-* [ ] Write MultiStore class with descriptors
-* [ ] Descriptors should support setting with respect to their dependencies inside MultiStore
-* [ ] Use Processor pattern to add custom logic and validators
+* [x] Write MultiStore class that maintain attribute dependencies
+* [x] Class methods should support automatic recalculation
+* [x] Custom logic and validators should be possible to add in any order
+* [ ] Optimize loop search algorithm
 
 # Status
-In process
+Almost finished
 
 

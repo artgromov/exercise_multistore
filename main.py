@@ -40,17 +40,18 @@ class MultiStore:
                 tree[name] = set()
 
             for parent in deps:
-                if parent == name:
-                    raise LoopDependency
-
                 if parent in tree:
                     tree[parent].add(name)
                 else:
                     tree[parent] = set(name)
+
         self.tree = tree
 
     def check_loop(self):
-        pass
+        try:
+            self.get_recalc_order(*self.tree.keys())
+        except RecursionError:
+            raise LoopDependency
 
     def check_not_described(self):
         # check for attributes present in tree, but not exists
@@ -103,10 +104,7 @@ class MultiStore:
     def describe(self, name, *formatters):
         if hasattr(type(self), name) or name == 'tree' or name == 'formatters':
             raise AttributeReserved
-
-        if hasattr(self, name):
-            self.remove(name)
-
+            
         setattr(self, name, NotSet)
         if len(formatters) == 0:
             # set default dont_change formatter

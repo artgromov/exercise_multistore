@@ -6,15 +6,8 @@ from exceptions import *
 
 def mutate(value): return 'mutate(%s)' % value
 def from_a(value, a): return 'from_a(%s,%s)' % (value, a)
-def from_b(value, b): return 'from_b(%s,%s)' % (value, b)
 def from_c(value, c): return 'from_c(%s,%s)' % (value, c)
 def from_d(value, d): return 'from_d(%s,%s)' % (value, d)
-def from_e(value, e): return 'from_e(%s,%s)' % (value, e)
-def from_f(value, f): return 'from_f(%s,%s)' % (value, f)
-def from_g(value, g): return 'from_g(%s,%s)' % (value, g)
-def from_h(value, h): return 'from_h(%s,%s)' % (value, h)
-def from_k(value, k): return 'from_k(%s,%s)' % (value, k)
-def from_h_k(value, h, k): return 'from_h_k(%s, %s, %s)' % (value, h, k)
 def from_b_c(value, b, c): pass
 def from_b_e(value, b, e): pass
 def from_f_g(value, f, g): pass
@@ -49,13 +42,13 @@ class TestTreeMethods(unittest.TestCase):
         self.assertDictEqual(self.model.tree, expected_tree)
 
     def test_check_loop(self):
-        with self.subTest('check simple loop'):
-            with self.assertRaises(LoopDependency):
-                self.model.formatters['a'] = (from_a,)
-                self.model.build_tree()
-
-        with self.subTest('check indirect loop'):
-            pass
+        self.model.tree = {'a': {'b'},
+                           'b': {'c'},
+                           'c': {'a'}
+                           }
+                               
+        with self.assertRaises(LoopDependency):
+            self.model.check_loop()
 
     def test_check_not_described_in_tree(self):
         self.model.tree = {'a': set()}
@@ -271,6 +264,6 @@ if __name__ == '__main__':
     import sys
     logging.basicConfig(level=logging.DEBUG,
                         format='%(levelname)s: %(message)s',
-                        stream=sys.stdout)  # to sync printed output
+                        stream=sys.stderr)  # to sync printed output with unittest output
 
     unittest.main()
