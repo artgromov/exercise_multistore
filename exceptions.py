@@ -1,19 +1,35 @@
-class AttributeNotSet(Exception):
+class AttributeCustomError(Exception):
     pass
 
 
-class AttributeNotDescribed(Exception):
+class AttributeReserved(AttributeCustomError):
     pass
 
 
-class ParentNotSet(Exception):
+class AttributeNotExist(AttributeCustomError):
     pass
 
 
-class InvalidValue(Exception):
+class AttributeNotDescribed(AttributeCustomError):
     pass
 
 
-class LoopDependency(Exception):
+class AttributeNotSet(AttributeCustomError):
+    pass
+
+
+class ParentNotSet(AttributeNotSet):
+    pass
+
+
+class ParentNotDescribed(AttributeNotDescribed):
+    pass
+
+
+class InvalidValue(AttributeCustomError):
+    pass
+
+
+class LoopDependency(AttributeCustomError):
     pass
 

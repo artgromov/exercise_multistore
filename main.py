@@ -12,8 +12,13 @@ class NotSet:
     pass
 
 
+class NotDescribed:
+    """Placeholder for not described attributes, that exists as dependencies"""
+    pass
+
+
 def dont_change(value):
-    """Formatter that doesnt change attribute and have no dependencies"""
+    """Default formatter that doesnt change attribute and have no dependencies"""
     return value
 
 
@@ -22,44 +27,44 @@ class MultiStore:
         self.tree = {}
         self.formatters = {}
 
-    def describe(self, name, *formatters):
-        if hasattr(self, name):
-            self.remove(name)
-            
-        setattr(self, name, NotSet)
-        if len(formatters) == 0:
-            formatters = (dont_change,)
-        self.formatters[name] = formatters
+    def build_tree(self):
+        tree = {}
+        for name, formatters in self.formatters.items():
+            deps = set()
+            for function in formatters:
+                arg_names = function.__code__.co_varnames[1:function.__code__.co_argcount]  # 1 arg is for new value
+                for arg in arg_names:
+                    deps.add(arg)
 
-        deps = set()
-        for function in formatters:
-            arg_names = function.__code__.co_varnames[1:function.__code__.co_argcount]  # 1 arg is for new value
-            for arg in arg_names:
-                deps.add(arg)
+            if name not in tree:
+                tree[name] = set()
 
-        if name not in self.tree:
-            self.tree[name] = set()
+            for parent in deps:
+                if parent == name:
+                    raise LoopDependency
 
-        for parent in deps:
-            if parent == name:
-                raise LoopDependency
+                if parent in tree:
+                    tree[parent].add(name)
+                else:
+                    tree[parent] = set(name)
+        self.tree = tree
 
-            if parent in self.tree:
-                self.tree[parent].add(name)
-            else:
-                self.tree[parent] = set(name)
+    def check_loop(self):
+        pass
 
-    def remove(self, name):
-        if hasattr(self, name):
-            delattr(self, name)
-            self.formatters.pop(name)
-            self.tree.pop(name)
-            for childs in self.tree.values():
-                childs.remove(name)
-                                
-        else:
-            raise AttributeNotDescribed
-    
+    def check_not_described(self):
+        # check for attributes present in tree, but not exists
+        for name in self.tree:
+            if not hasattr(self, name):
+                setattr(self, name, NotDescribed)
+
+        # check for attributes not present in tree and NotDescribed
+        attrs = dict(self.__dict__)
+        for name, value in attrs.items():
+            if value is NotDescribed:
+                if name not in self.tree:
+                    delattr(self, name)
+
     def get_subtree(self, *names):
         tree = self.tree
         subtree = {}
@@ -95,17 +100,52 @@ class MultiStore:
         tree_cut(subtree)
         return recalc_order
 
+    def describe(self, name, *formatters):
+        if hasattr(type(self), name) or name == 'tree' or name == 'formatters':
+            raise AttributeReserved
+
+        if hasattr(self, name):
+            self.remove(name)
+
+        setattr(self, name, NotSet)
+        if len(formatters) == 0:
+            # set default dont_change formatter
+            formatters = (dont_change,)
+        self.formatters[name] = formatters
+
+        self.build_tree()
+        self.check_loop()
+        self.check_not_described()
+
+    def remove(self, name):
+        if hasattr(self, name):
+            delattr(self, name)
+            self.formatters.pop(name)
+
+            self.build_tree()
+            self.check_loop()
+            self.check_not_described()
+
+        else:
+            raise AttributeNotExist
+
     def set(self, **kwargs):
         recalc_order = self.get_recalc_order(*list(kwargs.keys()))
         for number, name in enumerate(recalc_order):
             if name in kwargs:
                 # use new value as start value
                 new_value = kwargs[name]
+                if name not in self.formatters:
+                    # cannot continue, because attribute cannot be calculated
+                    raise AttributeNotDescribed
             else:
                 # use current value as start value
                 new_value = getattr(self, name)
-                if new_value is NotSet:
-                    # make no change, check as parent later if needed
+                if new_value is NotDescribed:
+                    # make no change, will be checked as parent later if necessary
+                    continue
+                elif new_value is NotSet:
+                    # make no change, will be checked as parent later if necessary
                     continue
 
             for function in self.formatters[name]:
@@ -113,8 +153,10 @@ class MultiStore:
                 arg_dict = {}
                 for arg in arg_names:
                     arg_value = getattr(self, arg)
-                    if arg_value is NotSet:                    
+                    if arg_value is NotSet:
                         raise ParentNotSet
+                    elif arg_value is NotDescribed:
+                        raise ParentNotDescribed
                     else:
                         arg_dict[arg] = arg_value
 
@@ -127,5 +169,8 @@ class MultiStore:
             value = getattr(self, name)
             if value is NotSet:
                 raise AttributeNotSet
+            if value is NotDescribed:
+                raise AttributeNotDescribed
+            return value
         else:
-            raise AttributeNotDescribed
+            raise AttributeNotExist
